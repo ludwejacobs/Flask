@@ -1,83 +1,63 @@
-from flask import Flask,render_template, redirect, url_for,request, jsonify, abort
+from flask import Flask,render_template, redirect, url_for,request, jsonify, abort,request
+from flask_sqlalchemy import SQLAlchemy
+from form import StudentForm
+
 application = Flask(__name__)
+application.config['SECRET_KEY'] = 'secret'
+application.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
+db = SQLAlchemy(application)
 
-students = [
-    {
-        'id': 1,
-        'name': 'Darren',
-        'physics': 80,
-        'maths': 60,
-        'chemistry': 45
-    },
-    {
-        'id': 2,
-        'name': 'Jerry',
-        'physics': 50, 
-        'maths': 45,
-        'chemistry': 45
-    }
-]
+class Student(db.Model):
+  id = db.Column(db.Integer, primary_key=True)
+  name = db.Column(db.String(50), nullable= False)
+  physics = db.Column(db.Integer)
+  maths = db.Column(db.Integer)
+  chemistry = db.Column(db.Integer)
 
+@application.route('/', methods=['GET','POST'])
+def add_results():
+    form = StudentForm()
+    if form.validate_on_submit():
+      student = Student(name=form.name.data, physics=form.physics.data, maths=form.maths.data,chemistry=form.chemistry.data,)
+      db.session.add(student)
+      db.session.commit()
+      return redirect(url_for('add_results'))
+    else:
+      return render_template('home.html', form=form)
 
-@application.route('/', methods=['GET'])
-def student():
-   return jsonify({'student':students})
-
-@application.route('/results/<int:indexId>',methods=["GET"])
-def get_id(indexId):
-   studentId = [student for student in students if student['id'] == indexId]
-   if len(studentId) == 0:
-      abort(404)
-   return jsonify({'Student':studentId[0]})
-
-
-@application.route('/results',methods=['POST'])
-def add_results() : 
-   if not request.json or not 'name' in request.json:    
-      abort(400)
-
-   student = {
-         'id': students[-1]['id'] + 1,
-         'name': request.json['name'],
-         'physics': request.json.get('physics',""),
-         'maths': request.json.get('maths',""),
-         'chemistry': request.json.get('chemistry',"")
-      }
-  
-   students.append(student)
-   return jsonify({'students':student}), 201
+@application.route('/results', methods=['GET','POST'])
+def results():
+  data = Student.query.all()
+  return render_template('results.html', data = data)
 
 @application.route('/results/<int:indexId>', methods=['PUT'])
 def update_results(indexId):
-  if request.method == 'PUT':
-    studentId = [student for student in students if student['id'] == indexId]
-    if len(studentId) == 0:
-      abort(404)
-    if not request.json:
-      abort(400)
-    if 'name' in request.json and type(request.json['name']) != str:
-      abort(400)
-    if 'physics' in request.json and type(request.json['physics']) != int:
-      abort(400)
-    if 'maths' in request.json and type(request.json['maths']) != int:
-      abort(404)
-    if 'chemistry' in request.json and type(request.json['chemistry']) != int:
-      abort(400)
+  
+  student = Student.query.filter_by(id = indexId).first()
 
-    studentId[0]['name'] = request.json.get('name',studentId[0]['name'])
-    studentId[0]['physics'] = request.json.get('physics',studentId[0]['physics'])
-    studentId[0]['maths'] = request.json.get('maths',studentId[0]['maths'])
-    studentId[0]['chemistry'] = request.json.get('chemistry',studentId[0]['chemistry'])
-    return jsonify({'Updated Student':studentId[0]})
+  if not student:
+    return jsonify({'message' : 'No Student found'})
+
+  student.name = request.json['name']
+  student.physics = request.json.get('physics', "")
+  student.maths = request.json.get('maths', "")
+  student.chemistry = request.json.get('chemistry', "") 
+  db.session.commit()
+  
+  return jsonify({'student':'Pass'})
 
 @application.route('/results/<int:indexId>', methods=['DELETE'])
-def delete(indexId):
-  if request.method == 'DELETE':
-    studentId = [student for student in students if student['id'] == indexId]
-    if len(studentId) == 0:
-      abort(404)
-    students.remove(studentId[0])
-    return jsonify({'Removed': True})
+def delete_student(indexId):
 
-if __name__ == "__main__":
-    application.run()
+  student = Student.query.filter_by(id = indexId).first()
+
+  if not student:
+    return jsonify({'message':'No user found'})
+
+  db.session.delete(student)
+  db.session.commit()
+
+  return jsonify({'message':'Student found and Deleted'})
+
+if __name__ == '__main__':
+ application.run(debug=True)
